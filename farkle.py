@@ -56,17 +56,24 @@ def main():
     score_dist = {}
     max_score = 0
     max_board = None
+    reset_count = 0
+    mod = args.games / 10
     for i in range(args.games):
-        print "++++GAME %d++++" % i
-        m, board = turn()
+        if not args.debug and i % mod == 0:
+            logging.info("Game %d" % i)
+        logging.debug("++++GAME %d++++" % i)
+        m, board, resets = turn()
+        if resets > 0:
+            reset_count += 1
         if m not in score_dist:
             score_dist[m] = []
         score_dist[m].append(board)
         if m > max_score:
             max_score = m
             max_board = board
-        print "Score = %d" % m
+        logging.debug("Score = %d" % m)
     print "Max board = %s, score = %d" % (str(max_board), max_score)
+    print "Had %d turns that rest dice" % reset_count
     for i in sorted(score_dist):
         print "Score %d = %d" % (i, len(score_dist[i]))
 
@@ -76,27 +83,43 @@ def turn():
     roll_score = -1
     num_dice = 6
     pinned_dice = []
+    old_pinned_dice = []
+    reset_count = 0
     while roll_score != 0 and num_dice > 0 and turn_score < 10000:
-        print "board: %s. current turn score: %d. now rolling %d dice..." % (str(pinned_dice), turn_score, num_dice)
+        logging.debug("board: %s. current turn score: %d. now rolling %d dice..." % (
+            str(pinned_dice), turn_score, num_dice))
         dice_roll = roll(num_dice)
-        print "got roll: %s" % str(dice_roll)
+        logging.debug("got roll: %s" % str(dice_roll))
         roll_score = score(dice_roll)
-        print "has score: %d" % roll_score
+        logging.debug("has score: %d" % roll_score)
         if roll_score > 0:
             to_pin = choose(dice_roll)
-            print "pinning: %s" % str(to_pin)
+            logging.debug("pinning: %s" % str(to_pin))
             pinned_dice.append(to_pin)
             num_dice -= len(to_pin)
             turn_score += score(to_pin)
+            if num_dice == 0:
+                # keep rolling, or choose to stop
+                # TODO: implement choice to stop?
+                logging.debug("resetting dice!")
+                reset_count += 1
+                num_dice = 6
+                old_pinned_dice.append(pinned_dice)
+                pinned_dice = []
         else:
-            print "0 score! Ending turn."
-            return 0, None
+            if len(pinned_dice) > 0:
+                old_pinned_dice.append(pinned_dice)
+            logging.debug("0 score! Ending turn.")
+            return turn_score, old_pinned_dice, reset_count
+    logging.debug("reset %d times" % reset_count)
+    if len(pinned_dice) > 0:
+        old_pinned_dice.append(pinned_dice)
     if turn_score >= 350:
-        print "Final board: %s" % str(pinned_dice)
-        return turn_score, pinned_dice
+        logging.debug("Final board: %s" % str(pinned_dice))
+        return turn_score, old_pinned_dice, reset_count
     else:
-        print "turn score < 350! Ending turn."
-        return 0, None
+        logging.debug("turn score < 350! Ending turn.")
+        return turn_score, old_pinned_dice, reset_count
 
 
 def choose(i):
